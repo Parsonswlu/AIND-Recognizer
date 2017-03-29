@@ -38,10 +38,8 @@ class ModelSelector(object):
         try:
             hmm_model = GaussianHMM(n_components=num_states, covariance_type="diag", n_iter=1000,
                                     random_state=self.random_state, verbose=False).fit(self.X, self.lengths)
-            # logL = self.score(self.X,self.lengths)
             if self.verbose:
                 print("model created for {} with {} states".format(self.this_word, num_states))
-                # print("model created for {} with {} states and logL = {}".format(self.this_word, num_states, logL))                
             return hmm_model
         except:
             if self.verbose:
@@ -95,12 +93,17 @@ class SelectorBIC(ModelSelector):
                 logN = np.log(len(self.X))
                 # Calculate BIC score using provided calculation and above model parameters
                 BIC[n] = -2 * logL + p*logN
+                # print("BIC for %d components is %d" % (n,BIC[n]))                
             except ValueError:
                 pass
             n+=1
 
-        # determine the number of components with the minimum BIC score
-        best_num_components = min(BIC,key=BIC.get)
+        try:
+            # determine the number of components with the minimum BIC score
+            best_num_components = min(BIC,key=BIC.get)
+        except ValueError:
+            # if none of the components have passable num components, pass min components to base_model
+            best_num_components = self.min_n_components
         # return best model
         return self.base_model(best_num_components)
 
@@ -118,31 +121,57 @@ class SelectorDIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on DIC scores
-        word_sequences = self.sequences
+        thisword = self.this_word
+        allwords = (self.words).keys()
         n=self.min_n_components
-        logProbX = {}
-        DIC = {}        
-        while (n <= self.max_n_components):
-            # Use try/except construct to catch ValueErrors
-            try:          
-                # train a model based on current number of components
-                model = GaussianHMM(n_components=n, covariance_type="diag", n_iter=1000,
-                                        random_state=self.random_state, verbose=False).fit(self.X, self.lengths)
-                # calculate log probability for the model
-                logProbX[n] = model.score(self.X, self.lengths)
-            except ValueError:
-                pass
+        # Check if allprobs exists, otherwise populate dict by training 
+        # every word and populating with log losses for each num component
+        try:
+            self.allprobs
+        except NameError,AttributeError:
+            self.allprobs={}       
+            while (n <= self.max_n_components):
+                logL = {}            
+                # train and score a model for every word
+                for i in allwords:                
+                    X_i, lengths_i = self.hwords[i]
+                    # Use try/except construct to catch ValueErrors
+                    try:          
+                        # train a model based on current number of components
+                        model = GaussianHMM(n_components=n, covariance_type="diag", n_iter=1000,
+                                                random_state=self.random_state, verbose=False).fit(X_i, lengths_i)
+                        # calculate log probability for the model
+                        logL[i] = model.score(X_i, lengths_i)       
+                        # print(logL[i])
+                    except ValueError:
+                        pass
+                self.allprobs[n] = logL
+                n+=1
+
+        DIC = {}
+        M=len(allwords)        
+        while (n <= self.max_n_components):                      
+            # Calculate the necessary variables needed for DIC
+            sumLogL = 0
+            for j in allwords:
+                if j!=thisword:
+                    try:
+                        sumLogL+=allprobs[n][j]
+                    # Catch errors if there is no valid model for word j with n components
+                    except KeyError:
+                        pass
+            try:
+                DIC[n] = allprobs[n][thisword] - (1/(M-1))*sumLogL
+            # Catch errors if there is no valid model for thisword with n components
+            except KeyError:
+                DIC[n] = float("-inf")
             n+=1
-
-        # Create a list of each of the choices (n_choices) and how many their are (M)        
-        n_choices = list(logProbX.keys())
-        M = len(n_choices)
-        # Calculate DIC score using provided calculation and above model parameters        
-        for i in n_choices:
-            DIC[i] = logProbX[i] - (1/(M-1))*sum([logProbX[j] for j in n_choices if i!=j])
-
-        # determine the number of components with the minimum DIC score
-        best_num_components = min(DIC,key=DIC.get)
+        try:        
+            # determine the number of components with the maximum DIC score
+            best_num_components = max(DIC,key=DIC.get)
+        except ValueError:
+            # if none of the components have passable num components, pass min components to base_model
+            best_num_components = self.min_n_components            
         # return best model
         return self.base_model(best_num_components)
 
@@ -159,7 +188,10 @@ class SelectorCV(ModelSelector):
         # TODO implement model selection using CV
         word_sequences = self.sequences
         n=self.min_n_components        
-        split_method = KFold(min(3,len(word_sequences))) 
+        # If the word has less than 3 examples, skip CV and return base model with n==3
+        if len(word_sequences) < 3:
+            return self.base_model(3)
+        split_method = KFold() 
         avgLogL={}
         while (n <= self.max_n_components):
             # Use try/except construct to catch ValueErrors
@@ -185,8 +217,12 @@ class SelectorCV(ModelSelector):
                 pass
             n+=1
 
-        # determine the number of components with the minimum log loss and return it
-        best_num_components = min(avgLogL,key=avgLogL.get)
+        try:
+            # determine the number of components with the max log loss and return it
+            best_num_components = max(avgLogL,key=avgLogL.get)            
+        except ValueError:
+            # if none of the components have passable num components, pass min components to base_model
+            best_num_components = self.min_n_components            
         # return model with optimal number of components
         return self.base_model(best_num_components)        
 
