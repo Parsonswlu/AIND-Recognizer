@@ -89,7 +89,8 @@ class SelectorBIC(ModelSelector):
                 # calculate log loss for the model
                 logL = model.score(self.X, self.lengths)
                 # Calculate number of free parameters and log of the number of examples
-                p = n*(n-1)
+                num_features = len(self.X[0])
+                p = n*(n-1) * 2*num_features*n
                 logN = np.log(len(self.X))
                 # Calculate BIC score using provided calculation and above model parameters
                 BIC[n] = -2 * logL + p*logN
@@ -124,11 +125,11 @@ class SelectorDIC(ModelSelector):
         thisword = self.this_word
         allwords = (self.words).keys()
         n=self.min_n_components
-        # Check if allprobs exists, otherwise populate dict by training 
+        # Check if self.allprobs exists, otherwise populate dict by training 
         # every word and populating with log losses for each num component
         try:
             self.allprobs
-        except NameError,AttributeError:
+        except (NameError, AttributeError):
             self.allprobs={}       
             while (n <= self.max_n_components):
                 logL = {}            
@@ -150,18 +151,10 @@ class SelectorDIC(ModelSelector):
 
         DIC = {}
         M=len(allwords)        
-        while (n <= self.max_n_components):                      
-            # Calculate the necessary variables needed for DIC
-            sumLogL = 0
-            for j in allwords:
-                if j!=thisword:
-                    try:
-                        sumLogL+=allprobs[n][j]
-                    # Catch errors if there is no valid model for word j with n components
-                    except KeyError:
-                        pass
+        while (n <= self.max_n_components):
+            # Try calculating DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
             try:
-                DIC[n] = allprobs[n][thisword] - (1/(M-1))*sumLogL
+                DIC[n] = allprobs[n][thisword] - (1/(M-1))*sum([allprobs[n][j] for j in allprobs[n] if j!=thisword])
             # Catch errors if there is no valid model for thisword with n components
             except KeyError:
                 DIC[n] = float("-inf")

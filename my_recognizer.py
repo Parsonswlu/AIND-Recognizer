@@ -29,9 +29,9 @@ def recognize(models: dict, test_set: SinglesData):
             try:
                 logL[this_key] = this_model.score(X_test,lengths_test)
             except ValueError:
-                logL[this_key] = float("inf")
+                logL[this_key] = float("-inf")
         probabilities.append(logL)
-        guesses.append(min(logL,key=logL.get))
+        guesses.append(max(logL,key=logL.get))
     return probabilities, guesses
 
 # For testing purposes
