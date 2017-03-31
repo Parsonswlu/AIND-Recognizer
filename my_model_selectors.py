@@ -90,7 +90,7 @@ class SelectorBIC(ModelSelector):
                 logL = model.score(self.X, self.lengths)
                 # Calculate number of free parameters and log of the number of examples
                 num_features = len(self.X[0])
-                p = n*(n-1) * 2*num_features*n
+                p = n*(n-1) + 2*num_features*n
                 logN = np.log(len(self.X))
                 # Calculate BIC score using provided calculation and above model parameters
                 BIC[n] = -2 * logL + p*logN
