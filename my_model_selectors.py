@@ -123,41 +123,32 @@ class SelectorDIC(ModelSelector):
 
         # TODO implement model selection based on DIC scores
         thisword = self.this_word
-        allwords = (self.words).keys()
-        n=self.min_n_components
-        # Check if self.allprobs exists, otherwise populate dict by training 
-        # every word and populating with log losses for each num component
-        try:
-            self.allprobs
-        except (NameError, AttributeError):
-            self.allprobs={}       
-            while (n <= self.max_n_components):
-                logL = {}            
-                # train and score a model for every word
-                for i in allwords:                
-                    X_i, lengths_i = self.hwords[i]
-                    # Use try/except construct to catch ValueErrors
-                    try:          
-                        # train a model based on current number of components
-                        model = GaussianHMM(n_components=n, covariance_type="diag", n_iter=1000,
-                                                random_state=self.random_state, verbose=False).fit(X_i, lengths_i)
-                        # calculate log probability for the model
-                        logL[i] = model.score(X_i, lengths_i)       
-                        # print(logL[i])
-                    except ValueError:
-                        pass
-                self.allprobs[n] = logL
-                n+=1
-
-        DIC = {}
-        M=len(allwords)        
+        allwords = (self.words).keys()       
+        n=self.min_n_components 
+        DIC = {}        
         while (n <= self.max_n_components):
+            logL = {}
+            validwords = []
+            # train and score a model for every word
+            for i in allwords:                
+                X_i, lengths_i = self.hwords[i]
+                # Use try/except construct to catch ValueErrors
+                try:          
+                    # train a model based on current number of components
+                    model = GaussianHMM(n_components=n, covariance_type="diag", n_iter=1000,
+                                            random_state=self.random_state, verbose=False).fit(X_i, lengths_i)
+                    # calculate log probability for the model
+                    logL[i] = model.score(X_i, lengths_i)       
+                    validwords.append(i)
+                except ValueError:
+                    pass
             # Try calculating DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
             try:
-                DIC[n] = allprobs[n][thisword] - (1/(M-1))*sum([allprobs[n][j] for j in allprobs[n] if j!=thisword])
+                M=len(validwords)                
+                DIC[n] = logL[thisword] - (1/(M-1))*sum([logL[j] for j in validwords if j!=thisword])
             # Catch errors if there is no valid model for thisword with n components
             except KeyError:
-                DIC[n] = float("-inf")
+                DIC[n] = float("-inf")            
             n+=1
         try:        
             # determine the number of components with the maximum DIC score
